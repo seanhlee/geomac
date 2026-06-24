@@ -3,25 +3,21 @@ import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
 import { Toolbar } from "@base-ui/react/toolbar";
 import {
-  AlignJustify,
-  Circle,
   Clipboard,
+  Cuboid,
   Download,
   FileDown,
-  Grid3X3,
-  Layers,
+  Gem,
   Minus,
-  Orbit,
+  Mountain,
+  MountainSnow,
   Plus,
-  Slash,
   Shuffle,
-  Square,
-  Triangle,
 } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { BASE_PARAMS, INK, PAPER, createMarks, getApertureRadius, round } from "./geometry";
-import type { MarkInstance, MarkShape, Params, SystemMode } from "./geometry";
+import { BASE_PARAMS, INK, PAPER, createRock, round } from "./geometry";
+import type { GrainMark, Params, Point, RockFace, RockForm, RockStroke } from "./geometry";
 
 type Option<T extends string> = {
   icon: ReactNode;
@@ -29,26 +25,19 @@ type Option<T extends string> = {
   value: T;
 };
 
-const SYSTEM_OPTIONS: Option<SystemMode>[] = [
-  { value: "radial", label: "Radial", icon: <Orbit /> },
-  { value: "rail", label: "Rail", icon: <AlignJustify /> },
-  { value: "stack", label: "Stack", icon: <Layers /> },
-  { value: "field", label: "Field", icon: <Grid3X3 /> },
-];
-
-const MARK_OPTIONS: Option<MarkShape>[] = [
-  { value: "block", label: "Block", icon: <Square /> },
-  { value: "wedge", label: "Wedge", icon: <Triangle /> },
-  { value: "dot", label: "Dot", icon: <Circle /> },
-  { value: "line", label: "Line", icon: <Slash /> },
+const FORM_OPTIONS: Option<RockForm>[] = [
+  { value: "monolith", label: "Monolith", icon: <Mountain /> },
+  { value: "shard", label: "Shard", icon: <Gem /> },
+  { value: "ridge", label: "Ridge", icon: <MountainSnow /> },
+  { value: "quarry", label: "Quarry", icon: <Cuboid /> },
 ];
 
 function App() {
   const [params, setParams] = useState<Params>(BASE_PARAMS);
   const [message, setMessage] = useState("ready");
   const svgRef = useRef<SVGSVGElement>(null);
-  const marks = useMemo(() => createMarks(params), [params]);
-  const apertureRadius = getApertureRadius(params);
+  const rock = useMemo(() => createRock(params), [params]);
+  const clipId = `rock-clip-${params.form}-${params.seed}`;
 
   useEffect(() => {
     if (message === "ready") return;
@@ -62,7 +51,7 @@ function App() {
 
   const mutate = () => {
     setParams((current) => ({ ...current, seed: nextSeed(current.seed) }));
-    setMessage("mutated");
+    setMessage("new rock");
   };
 
   const copySvg = async () => {
@@ -126,60 +115,86 @@ function App() {
         <div className="identity">
           <span className="wordmark">geomac</span>
           <span className="seed-label">
-            {params.system} / #{params.seed}
+            {params.form} / #{params.seed}
           </span>
         </div>
         {message !== "ready" ? <span className="status-pill">{message}</span> : null}
       </header>
 
-      <section className="viewport" aria-label="Generated vector">
+      <section className="viewport" aria-label="Generated rock">
         <svg
-          aria-label="Geomac composition"
-          className="composition"
-          data-geomac="composition"
+          aria-label="Geomac rock"
+          className="composition rock-composition"
+          data-geomac="rock"
           ref={svgRef}
           role="img"
           viewBox={`0 0 ${params.dimension} ${params.dimension}`}
           xmlns="http://www.w3.org/2000/svg"
         >
+          <defs>
+            <clipPath id={clipId}>
+              <path d={rock.silhouette} />
+            </clipPath>
+          </defs>
           <rect fill={PAPER} height={params.dimension} width={params.dimension} />
-          <g fill={INK}>{marks.map((mark) => renderMark(mark, params.mark))}</g>
-          {apertureRadius > 0 ? (
-            <circle cx={params.dimension / 2} cy={params.dimension / 2} fill={PAPER} r={apertureRadius} />
-          ) : null}
+          {rock.shadow ? <path d={rock.shadow} fill={INK} opacity="0.18" /> : null}
+          <g clipPath={`url(#${clipId})`}>
+            <path d={rock.silhouette} fill={rock.baseFill} />
+            {rock.faces.map(renderFace)}
+            <g>{rock.strataLines.map(renderStroke)}</g>
+            <g>{rock.cracks.map(renderStroke)}</g>
+            <g>{rock.grains.map(renderGrain)}</g>
+          </g>
         </svg>
       </section>
 
-      <Toolbar.Root aria-label="Geomac controls" className="control-rail">
+      <Toolbar.Root aria-label="Geomac controls" className="control-rail rock-rail">
         <SegmentedControl
-          label="System"
-          onChange={(value) => updateParam("system", value)}
-          options={SYSTEM_OPTIONS}
-          value={params.system}
-        />
-
-        <SegmentedControl
-          label="Mark"
-          onChange={(value) => updateParam("mark", value)}
-          options={MARK_OPTIONS}
-          value={params.mark}
+          label="Form"
+          onChange={(value) => updateParam("form", value)}
+          options={FORM_OPTIONS}
+          value={params.form}
         />
 
         <NumberControl
-          label="Level"
+          label="Fracture"
           max={7}
           min={1}
-          onChange={(value) => updateParam("level", value)}
+          onChange={(value) => updateParam("fracture", value)}
           step={1}
-          value={params.level}
+          value={params.fracture}
         />
         <NumberControl
-          label="Phase"
-          max={180}
-          min={-180}
-          onChange={(value) => updateParam("phase", value)}
-          step={15}
-          value={params.phase}
+          label="Strata"
+          max={7}
+          min={0}
+          onChange={(value) => updateParam("strata", value)}
+          step={1}
+          value={params.strata}
+        />
+        <NumberControl
+          label="Erode"
+          max={7}
+          min={1}
+          onChange={(value) => updateParam("erosion", value)}
+          step={1}
+          value={params.erosion}
+        />
+        <NumberControl
+          label="Light"
+          max={3}
+          min={-3}
+          onChange={(value) => updateParam("light", value)}
+          step={1}
+          value={params.light}
+        />
+        <NumberControl
+          label="Grain"
+          max={7}
+          min={0}
+          onChange={(value) => updateParam("grain", value)}
+          step={1}
+          value={params.grain}
         />
         <NumberControl
           label="Size"
@@ -294,56 +309,42 @@ function RailButton({ icon, label, onClick }: { icon: ReactNode; label: string; 
   );
 }
 
-function renderMark(mark: MarkInstance, shape: MarkShape) {
-  const transform = `translate(${round(mark.x)} ${round(mark.y)}) rotate(${round(mark.angle)})`;
-  const length = Math.max(1, mark.length);
-  const width = Math.max(0.6, mark.width);
-  const radius = (mark.smooth / 100) * (width / 2);
-  const taper = mark.taper / 100;
-  const innerWidth = width * (0.18 + (1 - taper) * 0.68);
+function renderFace(face: RockFace) {
+  return <polygon fill={face.fill} key={face.id} points={pointList(face.points)} />;
+}
 
-  if (shape === "dot") {
-    const dotRadius = Math.max(width * 0.62, Math.min(length * 0.2, width * 1.08));
-    return <circle key={mark.id} opacity={mark.opacity} r={round(dotRadius)} transform={transform} />;
-  }
-
-  if (shape === "line") {
-    const lineWidth = Math.max(1, width * 0.28);
-    return (
-      <rect
-        height={round(lineWidth)}
-        key={mark.id}
-        opacity={mark.opacity}
-        transform={transform}
-        width={round(length)}
-        x={round(-length / 2)}
-        y={round(-lineWidth / 2)}
-      />
-    );
-  }
-
-  if (shape === "block") {
-    return (
-      <rect
-        height={round(width)}
-        key={mark.id}
-        opacity={mark.opacity}
-        rx={round(radius)}
-        transform={transform}
-        width={round(length)}
-        x={round(-length / 2)}
-        y={round(-width / 2)}
-      />
-    );
-  }
-
-  const nose = length / 2;
-  const tail = -length / 2;
-  const d = [`M ${round(tail)} ${round(-innerWidth / 2)}`, `L ${round(nose)} 0`, `L ${round(tail)} ${round(innerWidth / 2)}`, "Z"].join(
-    " ",
+function renderStroke(stroke: RockStroke) {
+  return (
+    <path
+      d={stroke.d}
+      fill="none"
+      key={stroke.id}
+      opacity={stroke.opacity}
+      stroke={stroke.stroke}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={round(stroke.width)}
+    />
   );
+}
 
-  return <path d={d} key={mark.id} opacity={mark.opacity} transform={transform} />;
+function renderGrain(grain: GrainMark) {
+  return (
+    <rect
+      fill={INK}
+      height={round(grain.width)}
+      key={grain.id}
+      opacity={grain.opacity}
+      transform={`translate(${round(grain.x)} ${round(grain.y)}) rotate(${round(grain.angle)})`}
+      width={round(grain.length)}
+      x={round(-grain.length / 2)}
+      y={round(-grain.width / 2)}
+    />
+  );
+}
+
+function pointList(points: Point[]) {
+  return points.map((point) => `${round(point.x)},${round(point.y)}`).join(" ");
 }
 
 function nextSeed(currentSeed: number) {
@@ -375,7 +376,7 @@ function downloadBlob(blob: Blob, name: string) {
 }
 
 function fileName(params: Params, extension: "png" | "svg") {
-  return `geomac-${params.system}-${params.seed}.${extension}`;
+  return `geomac-rock-${params.form}-${params.seed}.${extension}`;
 }
 
 export default App;

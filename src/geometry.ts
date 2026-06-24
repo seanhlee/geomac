@@ -1,25 +1,53 @@
-export type SystemMode = "radial" | "rail" | "stack" | "field";
-export type MarkShape = "block" | "wedge" | "dot" | "line";
+export type RockForm = "monolith" | "shard" | "ridge" | "quarry";
 
 export type Params = {
-  system: SystemMode;
-  mark: MarkShape;
+  form: RockForm;
   dimension: number;
-  level: number;
-  phase: number;
+  fracture: number;
+  strata: number;
+  erosion: number;
+  grain: number;
+  light: number;
   seed: number;
 };
 
-export type MarkInstance = {
+export type Point = {
+  x: number;
+  y: number;
+};
+
+export type RockFace = {
+  id: string;
+  points: Point[];
+  fill: string;
+};
+
+export type RockStroke = {
+  id: string;
+  d: string;
+  stroke: string;
+  width: number;
+  opacity: number;
+};
+
+export type GrainMark = {
   id: string;
   x: number;
   y: number;
   angle: number;
   length: number;
   width: number;
-  taper: number;
-  smooth: number;
   opacity: number;
+};
+
+export type RockScene = {
+  silhouette: string;
+  shadow: string;
+  baseFill: string;
+  faces: RockFace[];
+  strataLines: RockStroke[];
+  cracks: RockStroke[];
+  grains: GrainMark[];
 };
 
 export const PAPER = "#ede9e2";
@@ -28,340 +56,418 @@ export const INK = "#11110f";
 const TAU = Math.PI * 2;
 
 export const BASE_PARAMS: Params = {
-  system: "radial",
-  mark: "block",
+  form: "monolith",
   dimension: 1024,
-  level: 3,
-  phase: 0,
+  fracture: 4,
+  strata: 5,
+  erosion: 4,
+  grain: 5,
+  light: 2,
   seed: 2908,
 };
 
-export function createMarks(params: Params): MarkInstance[] {
-  if (params.system === "radial") return createRadialMarks(params);
-  if (params.system === "rail") return createRailMarks(params);
-  if (params.system === "stack") return createStackMarks(params);
-  return createFieldMarks(params);
-}
-
-export function getApertureRadius(params: Params) {
-  if (params.system !== "radial") return 0;
-  return params.dimension * (0.115 + params.level * 0.005);
-}
-
-function createRadialMarks(params: Params): MarkInstance[] {
+export function createRock(params: Params): RockScene {
   const random = mulberry32(params.seed);
-  const marks: MarkInstance[] = [];
   const dimension = params.dimension;
-  const center = dimension / 2;
-  const half = dimension / 2;
-  const count = 24 + params.level * 6;
-  const inner = half * (0.22 + params.level * 0.012);
-  const outer = half * Math.min(0.9, 0.76 + params.level * 0.026);
-  const span = outer - inner;
-  const baseWidth = dimension * (0.011 + params.level * 0.0012);
-  const bodyLength = span * (0.24 + params.level * 0.028);
-  const hairLength = span * (0.58 + params.level * 0.032);
+  const outer = roughenPolygon(getOuterShape(params.form), params.erosion, random);
+  const silhouettePoints = outer.map((point) => scalePoint(point, dimension));
+  const silhouette = pointsToPath(silhouettePoints);
+  const shadow = createShadow(silhouettePoints, dimension);
 
-  for (let index = 0; index < count; index += 1) {
-    const t = index / count;
-    const angle = t * 360 + params.phase;
-    const variant = (index * 5 + params.seed) % 7;
-    const wave = Math.sin(t * TAU * (2 + params.level * 0.5) + params.seed * 0.001);
-    const offsetNoise = signed(random) * span * 0.018;
-    const bodyStart = inner + span * (0.26 + variant * 0.032) + offsetNoise;
-    const hairStart = inner + span * 0.18;
-
-    pushRadialMark(marks, {
-      id: `radial-hair-${index}`,
-      center,
-      angle,
-      radius: hairStart + hairLength / 2,
-      length: hairLength * (0.92 + wave * 0.035),
-      width: baseWidth * 0.32,
-      taper: 0,
-      smooth: 0,
-      opacity: 1,
-    });
-
-    pushRadialMark(marks, {
-      id: `radial-body-${index}`,
-      center,
-      angle,
-      radius: bodyStart + bodyLength / 2,
-      length: bodyLength * (0.9 + (variant % 4) * 0.045),
-      width: baseWidth * (1.45 + (variant % 3) * 0.18),
-      taper: 14,
-      smooth: params.mark === "dot" ? 100 : 0,
-      opacity: 1,
-    });
-
-    if (params.level >= 2) {
-      pushRadialMark(marks, {
-        id: `radial-tick-${index}`,
-        center,
-        angle,
-        radius: inner + span * (0.52 + (variant % 3) * 0.055),
-        length: baseWidth * (1.65 + (index % 2) * 0.45),
-        width: baseWidth * 0.72,
-        taper: 0,
-        smooth: 0,
-        opacity: 1,
-      });
-    }
-
-    if (params.level >= 5 && index % 3 === 0) {
-      pushRadialMark(marks, {
-        id: `radial-outer-${index}`,
-        center,
-        angle,
-        radius: inner + span * 0.82,
-        length: bodyLength * 0.32,
-        width: baseWidth * 0.86,
-        taper: 0,
-        smooth: 0,
-        opacity: 1,
-      });
-    }
-  }
-
-  return marks;
-}
-
-function createRailMarks(params: Params): MarkInstance[] {
-  const marks: MarkInstance[] = [];
-  const dimension = params.dimension;
-  const margin = dimension * 0.15;
-  const span = dimension - margin * 2;
-  const rows = params.level + 1;
-  const columns = 5 + params.level * 2;
-  const rowGap = dimension * (0.072 - Math.min(4, params.level) * 0.004);
-  const baseLength = dimension * (0.038 + params.level * 0.003);
-  const baseWidth = dimension * (0.012 + params.level * 0.001);
-  const phaseShift = (params.phase / 360) * (span / columns);
-  const center = dimension / 2;
-
-  for (let row = 0; row < rows; row += 1) {
-    const y = center + (row - (rows - 1) / 2) * rowGap;
-    const rowOffset = (row % 2 === 0 ? phaseShift : -phaseShift) + (row % 2) * (span / columns) * 0.48;
-    const rowAngle = params.phase * 0.1 + (row - (rows - 1) / 2) * 2.8;
-
-    for (let column = 0; column < columns; column += 1) {
-      const t = columns === 1 ? 0.5 : column / (columns - 1);
-      const pattern = (column + row * 2 + params.seed) % 6;
-      const x = margin + t * span + rowOffset;
-      const wrappedX = wrap(x, margin, dimension - margin);
-      const pulse = Math.sin(t * TAU * 1.5 + row + params.seed * 0.001);
-
-      marks.push({
-        id: `rail-${row}-${column}`,
-        x: wrappedX,
-        y: y + pulse * dimension * 0.006,
-        angle: rowAngle + pulse * 6,
-        length: baseLength * (0.72 + pattern * 0.075),
-        width: baseWidth * (0.82 + (pattern % 3) * 0.22),
-        taper: 0,
-        smooth: params.mark === "dot" ? 100 : 0,
-        opacity: 1,
-      });
-
-      if (params.level >= 5 && column % 3 === row % 3) {
-        marks.push({
-          id: `rail-register-${row}-${column}`,
-          x: wrappedX + baseLength * 0.18,
-          y: y + baseWidth * 2.7,
-          angle: rowAngle,
-          length: baseLength * 0.28,
-          width: baseWidth * 0.52,
-          taper: 0,
-          smooth: 0,
-          opacity: 1,
-        });
-      }
-    }
-  }
-
-  return marks;
-}
-
-function createStackMarks(params: Params): MarkInstance[] {
-  const marks: MarkInstance[] = [];
-  const dimension = params.dimension;
-  const center = dimension / 2;
-  const unit = dimension * (0.044 + params.level * 0.003);
-  const count = params.level * 2 + 5;
-  const baseWidth = dimension * (0.013 + params.level * 0.001);
-  const height = unit * (count - 1);
-
-  for (let index = 0; index < count; index += 1) {
-    const t = count === 1 ? 0.5 : index / (count - 1);
-    const local = t * 2 - 1;
-    const y = center - height / 2 + index * unit;
-    const shoulder = Math.sin(t * Math.PI);
-    const length = unit * (1.1 + shoulder * (1.8 + params.level * 0.16));
-    const angle = params.phase + (index % 2 === 0 ? 0 : 90);
-
-    marks.push({
-      id: `stack-spine-${index}`,
-      x: center,
-      y,
-      angle,
-      length,
-      width: baseWidth * (1 + shoulder * 0.38),
-      taper: 0,
-      smooth: params.mark === "dot" ? 100 : 0,
-      opacity: 1,
-    });
-
-    if (params.level >= 2 && index % 2 === 0) {
-      const spread = unit * (0.72 + shoulder * 0.7);
-      marks.push({
-        id: `stack-left-${index}`,
-        x: center - spread,
-        y: y + local * unit * 0.08,
-        angle: params.phase + 90,
-        length: unit * (0.56 + shoulder * 0.52),
-        width: baseWidth * 0.78,
-        taper: 0,
-        smooth: 0,
-        opacity: 0.92,
-      });
-      marks.push({
-        id: `stack-right-${index}`,
-        x: center + spread,
-        y: y - local * unit * 0.08,
-        angle: params.phase + 90,
-        length: unit * (0.56 + shoulder * 0.52),
-        width: baseWidth * 0.78,
-        taper: 0,
-        smooth: 0,
-        opacity: 0.92,
-      });
-    }
-  }
-
-  if (params.level >= 5) {
-    const capLength = unit * (2.8 + params.level * 0.1);
-    marks.push({
-      id: "stack-cap-top",
-      x: center,
-      y: center - height / 2 - unit * 0.72,
-      angle: params.phase,
-      length: capLength,
-      width: baseWidth * 0.72,
-      taper: 0,
-      smooth: 0,
-      opacity: 1,
-    });
-    marks.push({
-      id: "stack-cap-bottom",
-      x: center,
-      y: center + height / 2 + unit * 0.72,
-      angle: params.phase,
-      length: capLength,
-      width: baseWidth * 0.72,
-      taper: 0,
-      smooth: 0,
-      opacity: 1,
-    });
-  }
-
-  return marks;
-}
-
-function createFieldMarks(params: Params): MarkInstance[] {
-  const random = mulberry32(params.seed);
-  const marks: MarkInstance[] = [];
-  const dimension = params.dimension;
-  const columns = params.level + 4;
-  const rows = params.level + 3;
-  const margin = dimension * 0.16;
-  const cellWidth = (dimension - margin * 2) / Math.max(1, columns - 1);
-  const cellHeight = (dimension - margin * 2) / Math.max(1, rows - 1);
-  const baseLength = dimension * (0.042 + params.level * 0.004);
-  const baseWidth = dimension * (0.011 + params.level * 0.001);
-
-  for (let row = 0; row < rows; row += 1) {
-    for (let column = 0; column < columns; column += 1) {
-      const index = row * columns + column;
-      const gate = (index + params.seed + row * 3) % 8;
-      if (params.level < 3 && gate === 0) continue;
-
-      const columnRatio = columns === 1 ? 0.5 : column / (columns - 1);
-      const rowRatio = rows === 1 ? 0.5 : row / (rows - 1);
-      const drift = Math.sin((columnRatio - rowRatio) * TAU + params.seed * 0.001);
-      const x = margin + column * cellWidth + signed(random) * dimension * 0.006;
-      const y = margin + row * cellHeight + signed(random) * dimension * 0.006;
-
-      marks.push({
-        id: `field-${row}-${column}`,
-        x,
-        y,
-        angle: params.phase + (column - row) * 5 + drift * 9,
-        length: baseLength * (0.72 + gate * 0.06),
-        width: baseWidth * (0.76 + (gate % 4) * 0.16),
-        taper: 0,
-        smooth: params.mark === "dot" ? 100 : 0,
-        opacity: 1,
-      });
-
-      if (params.level >= 6 && gate > 4) {
-        marks.push({
-          id: `field-secondary-${row}-${column}`,
-          x: x + baseLength * 0.32,
-          y: y - baseWidth * 2.1,
-          angle: params.phase + 90 + drift * 6,
-          length: baseLength * 0.36,
-          width: baseWidth * 0.54,
-          taper: 0,
-          smooth: 0,
-          opacity: 1,
-        });
-      }
-    }
-  }
-
-  return marks;
-}
-
-function pushRadialMark(
-  marks: MarkInstance[],
-  mark: {
-    id: string;
-    center: number;
-    angle: number;
-    radius: number;
-    length: number;
-    width: number;
-    taper: number;
-    smooth: number;
-    opacity: number;
-  },
-) {
-  const point = polarToPoint(mark.center, mark.center, mark.radius, mark.angle);
-  marks.push({
-    id: mark.id,
-    x: point.x,
-    y: point.y,
-    angle: mark.angle,
-    length: mark.length,
-    width: mark.width,
-    taper: mark.taper,
-    smooth: mark.smooth,
-    opacity: mark.opacity,
-  });
-}
-
-function polarToPoint(cx: number, cy: number, radius: number, angleDegrees: number) {
-  const angle = (angleDegrees / 180) * Math.PI;
   return {
-    x: cx + Math.cos(angle) * radius,
-    y: cy + Math.sin(angle) * radius,
+    silhouette,
+    shadow,
+    baseFill: gray(0.48 + params.light * 0.025),
+    faces: createFaces(params),
+    strataLines: createStrata(params, random),
+    cracks: createCracks(params, random),
+    grains: createGrains(params, random),
   };
 }
 
-function wrap(value: number, min: number, max: number) {
-  const range = max - min;
-  return ((((value - min) % range) + range) % range) + min;
+function getOuterShape(form: RockForm): Point[] {
+  if (form === "shard") {
+    return [
+      { x: 0.5, y: 0.05 },
+      { x: 0.63, y: 0.2 },
+      { x: 0.72, y: 0.17 },
+      { x: 0.82, y: 0.45 },
+      { x: 0.77, y: 0.68 },
+      { x: 0.88, y: 0.85 },
+      { x: 0.61, y: 0.93 },
+      { x: 0.42, y: 0.88 },
+      { x: 0.24, y: 0.95 },
+      { x: 0.13, y: 0.68 },
+      { x: 0.19, y: 0.42 },
+      { x: 0.32, y: 0.18 },
+    ];
+  }
+
+  if (form === "ridge") {
+    return [
+      { x: 0.17, y: 0.46 },
+      { x: 0.31, y: 0.23 },
+      { x: 0.46, y: 0.18 },
+      { x: 0.58, y: 0.25 },
+      { x: 0.74, y: 0.27 },
+      { x: 0.88, y: 0.55 },
+      { x: 0.82, y: 0.74 },
+      { x: 0.66, y: 0.84 },
+      { x: 0.41, y: 0.87 },
+      { x: 0.2, y: 0.75 },
+      { x: 0.11, y: 0.62 },
+    ];
+  }
+
+  if (form === "quarry") {
+    return [
+      { x: 0.27, y: 0.18 },
+      { x: 0.48, y: 0.1 },
+      { x: 0.56, y: 0.2 },
+      { x: 0.73, y: 0.22 },
+      { x: 0.74, y: 0.38 },
+      { x: 0.83, y: 0.46 },
+      { x: 0.86, y: 0.75 },
+      { x: 0.7, y: 0.86 },
+      { x: 0.52, y: 0.92 },
+      { x: 0.31, y: 0.84 },
+      { x: 0.18, y: 0.67 },
+      { x: 0.19, y: 0.4 },
+    ];
+  }
+
+  return [
+    { x: 0.46, y: 0.06 },
+    { x: 0.61, y: 0.17 },
+    { x: 0.69, y: 0.18 },
+    { x: 0.77, y: 0.31 },
+    { x: 0.84, y: 0.58 },
+    { x: 0.92, y: 0.77 },
+    { x: 0.74, y: 0.87 },
+    { x: 0.55, y: 0.94 },
+    { x: 0.36, y: 0.88 },
+    { x: 0.2, y: 0.76 },
+    { x: 0.12, y: 0.58 },
+    { x: 0.1, y: 0.45 },
+    { x: 0.23, y: 0.26 },
+    { x: 0.34, y: 0.16 },
+  ];
+}
+
+function roughenPolygon(points: Point[], erosion: number, random: () => number): Point[] {
+  const roughened: Point[] = [];
+  const amount = 0.006 + erosion * 0.0045;
+
+  for (let index = 0; index < points.length; index += 1) {
+    const current = points[index];
+    const next = points[(index + 1) % points.length];
+    roughened.push(jitterPoint(current, amount * 0.55, random));
+
+    if (erosion < 2) continue;
+
+    const mid = {
+      x: current.x + (next.x - current.x) * (0.42 + random() * 0.18),
+      y: current.y + (next.y - current.y) * (0.42 + random() * 0.18),
+    };
+    const dx = next.x - current.x;
+    const dy = next.y - current.y;
+    const length = Math.hypot(dx, dy) || 1;
+    const normal = { x: -dy / length, y: dx / length };
+    const push = signed(random) * amount * (0.8 + random() * 1.2);
+
+    roughened.push({
+      x: clamp01(mid.x + normal.x * push),
+      y: clamp01(mid.y + normal.y * push),
+    });
+  }
+
+  return roughened;
+}
+
+function createFaces(params: Params): RockFace[] {
+  const dimension = params.dimension;
+  const light = params.light;
+  const templates = getFaceTemplates(params.form);
+
+  return templates.map((face, index) => ({
+    id: `face-${index}`,
+    points: face.points.map((point) => scalePoint(point, dimension)),
+    fill: gray(face.tone + face.response * light * 0.055),
+  }));
+}
+
+function getFaceTemplates(form: RockForm): Array<{ points: Point[]; tone: number; response: number }> {
+  const common = [
+    {
+      tone: 0.25,
+      response: -0.9,
+      points: [
+        { x: 0.09, y: 0.43 },
+        { x: 0.24, y: 0.25 },
+        { x: 0.44, y: 0.08 },
+        { x: 0.39, y: 0.54 },
+        { x: 0.28, y: 0.82 },
+        { x: 0.13, y: 0.7 },
+      ],
+    },
+    {
+      tone: 0.72,
+      response: 0.75,
+      points: [
+        { x: 0.34, y: 0.1 },
+        { x: 0.53, y: 0.04 },
+        { x: 0.66, y: 0.22 },
+        { x: 0.47, y: 0.3 },
+        { x: 0.33, y: 0.22 },
+      ],
+    },
+    {
+      tone: 0.42,
+      response: 0.35,
+      points: [
+        { x: 0.38, y: 0.3 },
+        { x: 0.54, y: 0.27 },
+        { x: 0.55, y: 0.56 },
+        { x: 0.4, y: 0.68 },
+        { x: 0.35, y: 0.48 },
+      ],
+    },
+    {
+      tone: 0.18,
+      response: -0.8,
+      points: [
+        { x: 0.43, y: 0.32 },
+        { x: 0.58, y: 0.45 },
+        { x: 0.44, y: 0.51 },
+      ],
+    },
+    {
+      tone: 0.58,
+      response: 0.62,
+      points: [
+        { x: 0.53, y: 0.2 },
+        { x: 0.78, y: 0.27 },
+        { x: 0.88, y: 0.67 },
+        { x: 0.62, y: 0.74 },
+        { x: 0.52, y: 0.52 },
+      ],
+    },
+    {
+      tone: 0.68,
+      response: 0.25,
+      points: [
+        { x: 0.41, y: 0.56 },
+        { x: 0.62, y: 0.72 },
+        { x: 0.74, y: 0.88 },
+        { x: 0.47, y: 0.93 },
+        { x: 0.27, y: 0.78 },
+      ],
+    },
+    {
+      tone: 0.12,
+      response: -0.7,
+      points: [
+        { x: 0.55, y: 0.68 },
+        { x: 0.88, y: 0.65 },
+        { x: 0.8, y: 0.78 },
+        { x: 0.56, y: 0.79 },
+      ],
+    },
+    {
+      tone: 0.34,
+      response: -0.55,
+      points: [
+        { x: 0.13, y: 0.57 },
+        { x: 0.31, y: 0.55 },
+        { x: 0.28, y: 0.83 },
+        { x: 0.13, y: 0.7 },
+      ],
+    },
+  ];
+
+  if (form === "ridge") {
+    return common.map((face) => ({
+      ...face,
+      points: face.points.map((point) => ({ x: 0.5 + (point.x - 0.5) * 1.12, y: 0.17 + point.y * 0.76 })),
+    }));
+  }
+
+  if (form === "shard") {
+    return common.map((face) => ({
+      ...face,
+      points: face.points.map((point) => ({ x: 0.5 + (point.x - 0.5) * 0.82, y: point.y })),
+    }));
+  }
+
+  if (form === "quarry") {
+    return [
+      ...common,
+      {
+        tone: 0.2,
+        response: -0.85,
+        points: [
+          { x: 0.57, y: 0.2 },
+          { x: 0.75, y: 0.22 },
+          { x: 0.74, y: 0.38 },
+          { x: 0.59, y: 0.42 },
+        ],
+      },
+      {
+        tone: 0.78,
+        response: 0.7,
+        points: [
+          { x: 0.25, y: 0.18 },
+          { x: 0.48, y: 0.1 },
+          { x: 0.58, y: 0.21 },
+          { x: 0.35, y: 0.28 },
+        ],
+      },
+    ];
+  }
+
+  return common;
+}
+
+function createStrata(params: Params, random: () => number): RockStroke[] {
+  const dimension = params.dimension;
+  const lines: RockStroke[] = [];
+  const count = params.strata * 6;
+  const startY = dimension * 0.16;
+  const endY = dimension * 0.84;
+
+  for (let index = 0; index < count; index += 1) {
+    const t = count <= 1 ? 0.5 : index / (count - 1);
+    const y = startY + (endY - startY) * t + signed(random) * dimension * 0.01;
+    const inset = dimension * (0.13 + random() * 0.12);
+    const steps = 7;
+    const points: Point[] = [];
+
+    for (let step = 0; step <= steps; step += 1) {
+      const p = step / steps;
+      const wave = Math.sin((p + t) * TAU * 1.3 + params.seed * 0.01);
+      points.push({
+        x: inset + (dimension - inset * 2) * p,
+        y: y + wave * dimension * (0.006 + params.erosion * 0.0018) + signed(random) * dimension * 0.004,
+      });
+    }
+
+    lines.push({
+      id: `strata-${index}`,
+      d: smoothPath(points),
+      stroke: index % 3 === 0 ? gray(0.86) : gray(0.18),
+      width: dimension * (0.0014 + (index % 2) * 0.0009),
+      opacity: index % 3 === 0 ? 0.26 : 0.18,
+    });
+  }
+
+  return lines;
+}
+
+function createCracks(params: Params, random: () => number): RockStroke[] {
+  const dimension = params.dimension;
+  const cracks: RockStroke[] = [];
+  const count = params.fracture * 7;
+
+  for (let index = 0; index < count; index += 1) {
+    const start = {
+      x: dimension * (0.18 + random() * 0.64),
+      y: dimension * (0.18 + random() * 0.64),
+    };
+    const angle = (params.light * -13 + signed(random) * 70 + (index % 4) * 28) * (Math.PI / 180);
+    const length = dimension * (0.045 + random() * 0.14);
+    const segments = 2 + Math.floor(random() * 3);
+    const points: Point[] = [start];
+
+    for (let segment = 1; segment <= segments; segment += 1) {
+      const progress = segment / segments;
+      points.push({
+        x: start.x + Math.cos(angle) * length * progress + signed(random) * dimension * 0.018,
+        y: start.y + Math.sin(angle) * length * progress + signed(random) * dimension * 0.018,
+      });
+    }
+
+    cracks.push({
+      id: `crack-${index}`,
+      d: polylinePath(points),
+      stroke: index % 5 === 0 ? gray(0.88) : INK,
+      width: dimension * (0.0014 + random() * 0.0028),
+      opacity: index % 5 === 0 ? 0.36 : 0.44,
+    });
+  }
+
+  return cracks;
+}
+
+function createGrains(params: Params, random: () => number): GrainMark[] {
+  const dimension = params.dimension;
+  const grains: GrainMark[] = [];
+  const count = params.grain * 110;
+
+  for (let index = 0; index < count; index += 1) {
+    grains.push({
+      id: `grain-${index}`,
+      x: dimension * (0.13 + random() * 0.74),
+      y: dimension * (0.1 + random() * 0.82),
+      angle: signed(random) * 24 + params.light * -3,
+      length: dimension * (0.003 + random() * 0.022),
+      width: dimension * (0.001 + random() * 0.0022),
+      opacity: 0.1 + random() * 0.26,
+    });
+  }
+
+  return grains;
+}
+
+function createShadow(points: Point[], dimension: number) {
+  const bottom = points.filter((point) => point.y > dimension * 0.68);
+  if (bottom.length < 2) return "";
+  const lower = bottom.map((point) => ({ x: point.x + dimension * 0.02, y: point.y + dimension * 0.035 }));
+  return pointsToPath(lower);
+}
+
+function scalePoint(point: Point, dimension: number): Point {
+  return { x: point.x * dimension, y: point.y * dimension };
+}
+
+function jitterPoint(point: Point, amount: number, random: () => number): Point {
+  return {
+    x: clamp01(point.x + signed(random) * amount),
+    y: clamp01(point.y + signed(random) * amount),
+  };
+}
+
+function pointsToPath(points: Point[]) {
+  return `${points.map((point, index) => `${index === 0 ? "M" : "L"} ${round(point.x)} ${round(point.y)}`).join(" ")} Z`;
+}
+
+function polylinePath(points: Point[]) {
+  return points.map((point, index) => `${index === 0 ? "M" : "L"} ${round(point.x)} ${round(point.y)}`).join(" ");
+}
+
+function smoothPath(points: Point[]) {
+  if (points.length < 2) return "";
+  return points
+    .map((point, index) => {
+      if (index === 0) return `M ${round(point.x)} ${round(point.y)}`;
+      const previous = points[index - 1];
+      const cx = (previous.x + point.x) / 2;
+      return `Q ${round(cx)} ${round(previous.y)} ${round(point.x)} ${round(point.y)}`;
+    })
+    .join(" ");
+}
+
+function gray(value: number) {
+  const channel = Math.round(clamp(value, 0.06, 0.88) * 255);
+  const hex = channel.toString(16).padStart(2, "0");
+  return `#${hex}${hex}${hex}`;
+}
+
+function clamp01(value: number) {
+  return clamp(value, 0, 1);
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
 }
 
 export function mulberry32(seed: number) {

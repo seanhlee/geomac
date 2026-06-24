@@ -1,16 +1,18 @@
 # geomac
 
-Geomac is a small monochrome vector construction instrument. It creates repeatable geometric studies from one system, one primitive mark, and a few discrete constraints.
+Geomac is a small monochrome rock machine. It creates repeatable 2.5D vector rocks from a restrained set of discrete controls.
 
-The current model is system-first:
+The current model is material-first:
 
-- `System`: radial, rail, stack, or field
-- `Mark`: block, wedge, dot, or line
-- `Level`: structural complexity
-- `Phase`: rotation or offset
+- `Form`: monolith, shard, ridge, or quarry
+- `Fracture`: number and weight of surface cracks
+- `Strata`: horizontal sediment lines
+- `Erode`: silhouette roughness
+- `Light`: tonal direction across facets
+- `Grain`: surface texture density
 - `Size`: export dimension
 
-The controls use Base UI's unstyled React primitives, with all visual styling owned by this project.
+The controls use Base UI's unstyled React primitives, with all visual styling owned by this project. The output can be copied as SVG or exported as SVG/PNG.
 
 ## Run
 
