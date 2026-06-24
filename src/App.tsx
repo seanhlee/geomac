@@ -17,7 +17,7 @@ import {
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { BASE_PARAMS, INK, PAPER, createRock, round } from "./geometry";
-import type { GrainMark, Params, Point, RockFace, RockForm, RockStroke } from "./geometry";
+import type { GrainMark, Params, Point, RockFace, RockForm, RockPatch, RockStroke } from "./geometry";
 
 type Option<T extends string> = {
   icon: ReactNode;
@@ -38,6 +38,13 @@ function App() {
   const svgRef = useRef<SVGSVGElement>(null);
   const rock = useMemo(() => createRock(params), [params]);
   const clipId = `rock-clip-${params.form}-${params.seed}`;
+  const lightId = `${clipId}-light`;
+  const stoneTextureId = `${clipId}-stone-texture`;
+  const dustTextureId = `${clipId}-dust-texture`;
+  const reliefTextureId = `${clipId}-relief-texture`;
+  const lightStartX = round(params.dimension * (0.14 + params.light * 0.025));
+  const lightEndX = round(params.dimension * (0.86 - params.light * 0.018));
+  const lightAzimuth = round(232 - params.light * 8);
 
   useEffect(() => {
     if (message === "ready") return;
@@ -135,15 +142,129 @@ function App() {
             <clipPath id={clipId}>
               <path d={rock.silhouette} />
             </clipPath>
+            <linearGradient
+              gradientUnits="userSpaceOnUse"
+              id={lightId}
+              x1={lightStartX}
+              x2={lightEndX}
+              y1={round(params.dimension * 0.02)}
+              y2={round(params.dimension * 0.94)}
+            >
+              <stop offset="0" stopColor="#fffefa" stopOpacity="0.34" />
+              <stop offset="0.46" stopColor="#d4d0c8" stopOpacity="0.02" />
+              <stop offset="1" stopColor={INK} stopOpacity="0.24" />
+            </linearGradient>
+            <filter
+              colorInterpolationFilters="sRGB"
+              height="100%"
+              id={stoneTextureId}
+              width="100%"
+              x="0"
+              y="0"
+            >
+              <feTurbulence
+                baseFrequency="0.018 0.12"
+                numOctaves="5"
+                result="stoneNoise"
+                seed={params.seed}
+                type="fractalNoise"
+              />
+              <feColorMatrix
+                in="stoneNoise"
+                result="stoneAlpha"
+                type="matrix"
+                values="0 0 0 0 0.055 0 0 0 0 0.055 0 0 0 0 0.055 0.48 0.48 0.48 0 -0.38"
+              />
+            </filter>
+            <filter
+              colorInterpolationFilters="sRGB"
+              height="100%"
+              id={dustTextureId}
+              width="100%"
+              x="0"
+              y="0"
+            >
+              <feTurbulence
+                baseFrequency="0.095 0.42"
+                numOctaves="3"
+                result="dustNoise"
+                seed={params.seed + 71}
+                type="fractalNoise"
+              />
+              <feColorMatrix
+                in="dustNoise"
+                result="dustAlpha"
+                type="matrix"
+                values="0 0 0 0 0.88 0 0 0 0 0.88 0 0 0 0 0.86 0.55 0.55 0.55 0 -0.6"
+              />
+            </filter>
+            <filter
+              colorInterpolationFilters="sRGB"
+              height="100%"
+              id={reliefTextureId}
+              width="100%"
+              x="0"
+              y="0"
+            >
+              <feTurbulence
+                baseFrequency="0.03 0.16"
+                numOctaves="4"
+                result="reliefHeight"
+                seed={params.seed + 139}
+                type="fractalNoise"
+              />
+              <feDiffuseLighting
+                diffuseConstant="0.72"
+                in="reliefHeight"
+                lightingColor="#f8f6ef"
+                result="reliefLight"
+                surfaceScale="5"
+              >
+                <feDistantLight azimuth={lightAzimuth} elevation="38" />
+              </feDiffuseLighting>
+              <feColorMatrix in="reliefLight" result="reliefMono" type="saturate" values="0" />
+            </filter>
           </defs>
           <rect fill={PAPER} height={params.dimension} width={params.dimension} />
           {rock.shadow ? <path d={rock.shadow} fill={INK} opacity="0.18" /> : null}
           <g clipPath={`url(#${clipId})`}>
             <path d={rock.silhouette} fill={rock.baseFill} />
             {rock.faces.map(renderFace)}
+            <path d={rock.silhouette} fill={`url(#${lightId})`} />
+            <rect
+              filter={`url(#${stoneTextureId})`}
+              height={params.dimension}
+              opacity="0.32"
+              style={{ mixBlendMode: "multiply" }}
+              width={params.dimension}
+            />
+            <rect
+              filter={`url(#${reliefTextureId})`}
+              height={params.dimension}
+              opacity="0.16"
+              style={{ mixBlendMode: "overlay" }}
+              width={params.dimension}
+            />
+            <rect
+              filter={`url(#${dustTextureId})`}
+              height={params.dimension}
+              opacity="0.14"
+              style={{ mixBlendMode: "screen" }}
+              width={params.dimension}
+            />
+            <g style={{ mixBlendMode: "multiply" }}>{rock.surfacePatches.map(renderPatch)}</g>
             <g>{rock.strataLines.map(renderStroke)}</g>
+            <g>{rock.edgeLines.map(renderStroke)}</g>
             <g>{rock.cracks.map(renderStroke)}</g>
             <g>{rock.grains.map(renderGrain)}</g>
+            <path
+              d={rock.silhouette}
+              fill="none"
+              opacity="0.09"
+              stroke={INK}
+              strokeLinejoin="round"
+              strokeWidth={round(params.dimension * 0.003)}
+            />
           </g>
         </svg>
       </section>
@@ -313,6 +434,10 @@ function renderFace(face: RockFace) {
   return <polygon fill={face.fill} key={face.id} points={pointList(face.points)} />;
 }
 
+function renderPatch(patch: RockPatch) {
+  return <polygon fill={patch.fill} key={patch.id} opacity={patch.opacity} points={pointList(patch.points)} />;
+}
+
 function renderStroke(stroke: RockStroke) {
   return (
     <path
@@ -331,7 +456,7 @@ function renderStroke(stroke: RockStroke) {
 function renderGrain(grain: GrainMark) {
   return (
     <rect
-      fill={INK}
+      fill={grain.fill}
       height={round(grain.width)}
       key={grain.id}
       opacity={grain.opacity}

@@ -32,6 +32,7 @@ export type RockStroke = {
 
 export type GrainMark = {
   id: string;
+  fill: string;
   x: number;
   y: number;
   angle: number;
@@ -40,11 +41,20 @@ export type GrainMark = {
   opacity: number;
 };
 
+export type RockPatch = {
+  id: string;
+  fill: string;
+  points: Point[];
+  opacity: number;
+};
+
 export type RockScene = {
   silhouette: string;
   shadow: string;
   baseFill: string;
   faces: RockFace[];
+  surfacePatches: RockPatch[];
+  edgeLines: RockStroke[];
   strataLines: RockStroke[];
   cracks: RockStroke[];
   grains: GrainMark[];
@@ -73,12 +83,15 @@ export function createRock(params: Params): RockScene {
   const silhouettePoints = outer.map((point) => scalePoint(point, dimension));
   const silhouette = pointsToPath(silhouettePoints);
   const shadow = createShadow(silhouettePoints, dimension);
+  const faces = createFaces(params);
 
   return {
     silhouette,
     shadow,
     baseFill: gray(0.48 + params.light * 0.025),
-    faces: createFaces(params),
+    faces,
+    surfacePatches: createSurfacePatches(params, random),
+    edgeLines: createFaceEdges(params, faces),
     strataLines: createStrata(params, random),
     cracks: createCracks(params, random),
     grains: createGrains(params, random),
@@ -157,6 +170,7 @@ function getOuterShape(form: RockForm): Point[] {
 function roughenPolygon(points: Point[], erosion: number, random: () => number): Point[] {
   const roughened: Point[] = [];
   const amount = 0.006 + erosion * 0.0045;
+  const chips = Math.min(4, Math.max(1, Math.floor((erosion + 1) / 2)));
 
   for (let index = 0; index < points.length; index += 1) {
     const current = points[index];
@@ -165,20 +179,24 @@ function roughenPolygon(points: Point[], erosion: number, random: () => number):
 
     if (erosion < 2) continue;
 
-    const mid = {
-      x: current.x + (next.x - current.x) * (0.42 + random() * 0.18),
-      y: current.y + (next.y - current.y) * (0.42 + random() * 0.18),
-    };
     const dx = next.x - current.x;
     const dy = next.y - current.y;
     const length = Math.hypot(dx, dy) || 1;
     const normal = { x: -dy / length, y: dx / length };
-    const push = signed(random) * amount * (0.8 + random() * 1.2);
 
-    roughened.push({
-      x: clamp01(mid.x + normal.x * push),
-      y: clamp01(mid.y + normal.y * push),
-    });
+    for (let chip = 1; chip <= chips; chip += 1) {
+      const t = clamp((chip / (chips + 1)) + signed(random) * 0.045, 0.12, 0.88);
+      const mid = {
+        x: current.x + dx * t,
+        y: current.y + dy * t,
+      };
+      const push = signed(random) * amount * (0.55 + random() * 1.15);
+
+      roughened.push({
+        x: clamp01(mid.x + normal.x * push),
+        y: clamp01(mid.y + normal.y * push),
+      });
+    }
   }
 
   return roughened;
@@ -186,14 +204,22 @@ function roughenPolygon(points: Point[], erosion: number, random: () => number):
 
 function createFaces(params: Params): RockFace[] {
   const dimension = params.dimension;
-  const light = params.light;
+  const lightVector = getLightVector(params.light);
   const templates = getFaceTemplates(params.form);
 
-  return templates.map((face, index) => ({
-    id: `face-${index}`,
-    points: face.points.map((point) => scalePoint(point, dimension)),
-    fill: gray(face.tone + face.response * light * 0.055),
-  }));
+  return templates.map((face, index) => {
+    const centroid = getCentroid(face.points);
+    const faceNormal = normalizeVector({ x: centroid.x - 0.51, y: centroid.y - 0.5 });
+    const illumination = dot(faceNormal, lightVector);
+    const altitude = (0.6 - centroid.y) * 0.045;
+    const directedTone = face.tone + illumination * 0.115 + altitude + face.response * params.light * 0.022;
+
+    return {
+      id: `face-${index}`,
+      points: face.points.map((point) => scalePoint(point, dimension)),
+      fill: gray(directedTone),
+    };
+  });
 }
 
 function getFaceTemplates(form: RockForm): Array<{ points: Point[]; tone: number; response: number }> {
@@ -328,36 +354,122 @@ function getFaceTemplates(form: RockForm): Array<{ points: Point[]; tone: number
   return common;
 }
 
+function createSurfacePatches(params: Params, random: () => number): RockPatch[] {
+  const dimension = params.dimension;
+  const patches: RockPatch[] = [];
+  const count = 8 + params.fracture * 3 + params.grain * 2;
+
+  for (let index = 0; index < count; index += 1) {
+    const cx = dimension * (0.15 + random() * 0.7);
+    const cy = dimension * (0.12 + random() * 0.78);
+    const radiusX = dimension * (0.008 + random() * 0.038);
+    const radiusY = dimension * (0.004 + random() * 0.025);
+    const sides = 3 + Math.floor(random() * 4);
+    const angle = (signed(random) * 42 + params.light * -5) * (Math.PI / 180);
+    const points: Point[] = [];
+
+    for (let side = 0; side < sides; side += 1) {
+      const t = (side / sides) * TAU + signed(random) * 0.28;
+      const radius = 0.55 + random() * 0.72;
+      const localX = Math.cos(t) * radiusX * radius;
+      const localY = Math.sin(t) * radiusY * radius;
+
+      points.push({
+        x: cx + Math.cos(angle) * localX - Math.sin(angle) * localY,
+        y: cy + Math.sin(angle) * localX + Math.cos(angle) * localY,
+      });
+    }
+
+    const bright = random() > 0.76;
+    patches.push({
+      id: `surface-patch-${index}`,
+      fill: bright ? gray(0.9) : gray(0.1 + random() * 0.28),
+      points,
+      opacity: bright ? 0.05 + random() * 0.08 : 0.055 + random() * 0.11,
+    });
+  }
+
+  return patches;
+}
+
+function createFaceEdges(params: Params, faces: RockFace[]): RockStroke[] {
+  const dimension = params.dimension;
+  const lightVector = getLightVector(params.light);
+  const center = { x: dimension * 0.5, y: dimension * 0.52 };
+  const edges: RockStroke[] = [];
+
+  faces.forEach((face, faceIndex) => {
+    face.points.forEach((start, edgeIndex) => {
+      const end = face.points[(edgeIndex + 1) % face.points.length];
+      const length = Math.hypot(end.x - start.x, end.y - start.y);
+      if (length < dimension * 0.045) return;
+
+      const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+      const outward = normalizeVector({ x: midpoint.x - center.x, y: midpoint.y - center.y });
+      const exposure = dot(outward, lightVector);
+      const lowerOcclusion = midpoint.y > dimension * 0.66 ? 0.05 : 0;
+      const highlight = exposure > 0.3;
+      const shadowed = exposure < -0.08 || lowerOcclusion > 0;
+
+      if (!highlight && !shadowed && edgeIndex % 2 === 1) return;
+
+      edges.push({
+        id: `edge-${faceIndex}-${edgeIndex}`,
+        d: `M ${round(start.x)} ${round(start.y)} L ${round(end.x)} ${round(end.y)}`,
+        stroke: highlight ? gray(0.9) : INK,
+        width: dimension * (highlight ? 0.00135 : 0.0018),
+        opacity: highlight
+          ? Math.min(0.18, 0.06 + exposure * 0.12)
+          : Math.min(0.26, 0.07 + Math.max(0, -exposure) * 0.15 + lowerOcclusion),
+      });
+    });
+  });
+
+  return edges;
+}
+
 function createStrata(params: Params, random: () => number): RockStroke[] {
   const dimension = params.dimension;
   const lines: RockStroke[] = [];
-  const count = params.strata * 6;
+  const count = params.strata * 10;
   const startY = dimension * 0.16;
   const endY = dimension * 0.84;
 
   for (let index = 0; index < count; index += 1) {
     const t = count <= 1 ? 0.5 : index / (count - 1);
-    const y = startY + (endY - startY) * t + signed(random) * dimension * 0.01;
-    const inset = dimension * (0.13 + random() * 0.12);
-    const steps = 7;
-    const points: Point[] = [];
+    const y = startY + (endY - startY) * t + signed(random) * dimension * 0.014;
+    const segmentCount = 1 + Math.floor(random() * 3);
 
-    for (let step = 0; step <= steps; step += 1) {
-      const p = step / steps;
-      const wave = Math.sin((p + t) * TAU * 1.3 + params.seed * 0.01);
-      points.push({
-        x: inset + (dimension - inset * 2) * p,
-        y: y + wave * dimension * (0.006 + params.erosion * 0.0018) + signed(random) * dimension * 0.004,
+    for (let segment = 0; segment < segmentCount; segment += 1) {
+      const length = dimension * (0.12 + random() * 0.34);
+      const range = dimension * 0.72;
+      const x = dimension * 0.14 + random() * Math.max(1, range - length);
+      const slope = signed(random) * dimension * 0.018;
+      const steps = 3 + Math.floor(random() * 4);
+      const points: Point[] = [];
+
+      for (let step = 0; step <= steps; step += 1) {
+        const p = step / steps;
+        const wave = Math.sin((p + t) * TAU * (1.1 + random() * 0.3) + params.seed * 0.01);
+        points.push({
+          x: x + length * p,
+          y:
+            y +
+            slope * (p - 0.5) +
+            wave * dimension * (0.0025 + params.erosion * 0.0011) +
+            signed(random) * dimension * 0.004,
+        });
+      }
+
+      const lightCatch = random() > 0.78;
+      lines.push({
+        id: `strata-${index}-${segment}`,
+        d: smoothPath(points),
+        stroke: lightCatch ? gray(0.88) : gray(0.14),
+        width: dimension * (0.0008 + random() * 0.0015),
+        opacity: lightCatch ? 0.12 + random() * 0.12 : 0.11 + random() * 0.18,
       });
     }
-
-    lines.push({
-      id: `strata-${index}`,
-      d: smoothPath(points),
-      stroke: index % 3 === 0 ? gray(0.86) : gray(0.18),
-      width: dimension * (0.0014 + (index % 2) * 0.0009),
-      opacity: index % 3 === 0 ? 0.26 : 0.18,
-    });
   }
 
   return lines;
@@ -366,7 +478,7 @@ function createStrata(params: Params, random: () => number): RockStroke[] {
 function createCracks(params: Params, random: () => number): RockStroke[] {
   const dimension = params.dimension;
   const cracks: RockStroke[] = [];
-  const count = params.fracture * 7;
+  const count = params.fracture * 5;
 
   for (let index = 0; index < count; index += 1) {
     const start = {
@@ -374,7 +486,7 @@ function createCracks(params: Params, random: () => number): RockStroke[] {
       y: dimension * (0.18 + random() * 0.64),
     };
     const angle = (params.light * -13 + signed(random) * 70 + (index % 4) * 28) * (Math.PI / 180);
-    const length = dimension * (0.045 + random() * 0.14);
+    const length = dimension * (0.04 + random() * 0.13);
     const segments = 2 + Math.floor(random() * 3);
     const points: Point[] = [start];
 
@@ -390,9 +502,27 @@ function createCracks(params: Params, random: () => number): RockStroke[] {
       id: `crack-${index}`,
       d: polylinePath(points),
       stroke: index % 5 === 0 ? gray(0.88) : INK,
-      width: dimension * (0.0014 + random() * 0.0028),
-      opacity: index % 5 === 0 ? 0.36 : 0.44,
+      width: dimension * (0.0009 + random() * 0.0022),
+      opacity: index % 5 === 0 ? 0.2 : 0.24 + random() * 0.12,
     });
+
+    if (random() > 0.68) {
+      const branchStart = points[1 + Math.floor(random() * (points.length - 1))];
+      const branchLength = length * (0.26 + random() * 0.32);
+      const branchAngle = angle + signed(random) * 0.95;
+      const branchEnd = {
+        x: branchStart.x + Math.cos(branchAngle) * branchLength,
+        y: branchStart.y + Math.sin(branchAngle) * branchLength,
+      };
+
+      cracks.push({
+        id: `crack-${index}-branch`,
+        d: polylinePath([branchStart, branchEnd]),
+        stroke: INK,
+        width: dimension * (0.0008 + random() * 0.0014),
+        opacity: 0.16 + random() * 0.12,
+      });
+    }
   }
 
   return cracks;
@@ -401,17 +531,21 @@ function createCracks(params: Params, random: () => number): RockStroke[] {
 function createGrains(params: Params, random: () => number): GrainMark[] {
   const dimension = params.dimension;
   const grains: GrainMark[] = [];
-  const count = params.grain * 110;
+  const count = params.grain * 150;
 
   for (let index = 0; index < count; index += 1) {
+    const lightCatch = random() > 0.84;
+    const broadScratch = random() > 0.78;
+
     grains.push({
       id: `grain-${index}`,
+      fill: lightCatch ? gray(0.88) : broadScratch ? gray(0.36) : INK,
       x: dimension * (0.13 + random() * 0.74),
       y: dimension * (0.1 + random() * 0.82),
-      angle: signed(random) * 24 + params.light * -3,
-      length: dimension * (0.003 + random() * 0.022),
-      width: dimension * (0.001 + random() * 0.0022),
-      opacity: 0.1 + random() * 0.26,
+      angle: signed(random) * (broadScratch ? 44 : 15) + params.light * -2.5,
+      length: dimension * (0.002 + random() * (broadScratch ? 0.026 : 0.015)),
+      width: dimension * (0.00055 + random() * 0.0014),
+      opacity: lightCatch ? 0.08 + random() * 0.12 : 0.045 + random() * 0.18,
     });
   }
 
@@ -427,6 +561,34 @@ function createShadow(points: Point[], dimension: number) {
 
 function scalePoint(point: Point, dimension: number): Point {
   return { x: point.x * dimension, y: point.y * dimension };
+}
+
+function getCentroid(points: Point[]): Point {
+  const total = points.reduce(
+    (sum, point) => ({
+      x: sum.x + point.x,
+      y: sum.y + point.y,
+    }),
+    { x: 0, y: 0 },
+  );
+
+  return { x: total.x / points.length, y: total.y / points.length };
+}
+
+function getLightVector(light: number): Point {
+  return normalizeVector({
+    x: -0.72 + light * 0.12,
+    y: -0.92,
+  });
+}
+
+function normalizeVector(vector: Point): Point {
+  const length = Math.hypot(vector.x, vector.y) || 1;
+  return { x: vector.x / length, y: vector.y / length };
+}
+
+function dot(a: Point, b: Point) {
+  return a.x * b.x + a.y * b.y;
 }
 
 function jitterPoint(point: Point, amount: number, random: () => number): Point {

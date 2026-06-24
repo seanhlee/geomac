@@ -14,6 +14,8 @@ The current model is material-first:
 
 The controls use Base UI's unstyled React primitives, with all visual styling owned by this project. The output can be copied as SVG or exported as SVG/PNG.
 
+The renderer combines clipped facets, broken strata, chipped silhouettes, SVG turbulence, and diffuse-lighting filters to keep the rocks monochrome while giving the surface more mineral depth.
+
 ## Run
 
 ```bash
