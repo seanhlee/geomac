@@ -50,7 +50,7 @@ export const BASE_PARAMS: Params = {
   levels: 3,
   rotation: 0,
   void: 24,
-  spread: 78,
+  spread: 84,
   length: 28,
   weight: 2,
   taper: 18,

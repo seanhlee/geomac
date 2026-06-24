@@ -80,14 +80,14 @@ button {
 .viewport {
   display: grid;
   min-height: 100vh;
-  padding: 82px 32px 150px;
+  padding: 76px 32px 132px;
   place-items: center;
 }
 
 .composition {
   display: block;
-  width: min(74vh, 76vw);
-  max-width: 860px;
+  width: min(78vh, 82vw);
+  max-width: 900px;
   min-width: min(360px, 78vw);
   aspect-ratio: 1;
 }
@@ -99,15 +99,16 @@ button {
   bottom: 28px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  width: min(980px, calc(100vw - 48px));
-  min-height: 76px;
+  gap: 0;
+  width: min(930px, calc(100vw - 48px));
+  min-height: 74px;
   transform: translateX(50%);
-  border: 1px solid rgba(17, 17, 15, 0.07);
   border-radius: 999px;
-  background: rgba(250, 249, 244, 0.58);
-  box-shadow: 0 16px 38px rgba(17, 17, 15, 0.07);
-  padding: 9px;
+  background: rgba(232, 229, 224, 0.84);
+  box-shadow:
+    0 18px 42px rgba(17, 17, 15, 0.08),
+    0 1px 0 rgba(255, 255, 255, 0.64) inset;
+  padding: 8px;
 }
 
 .shape-control {
@@ -126,7 +127,7 @@ button {
 .icon-segmented {
   display: grid;
   align-items: center;
-  width: 238px;
+  width: 236px;
   height: 58px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   border-radius: 999px;
@@ -165,28 +166,27 @@ button {
 
 .stepper {
   display: grid;
-  flex: 1 1 112px;
-  gap: 7px;
-  min-width: 106px;
+  flex: 1 1 124px;
+  gap: 6px;
+  min-width: 118px;
+  border-left: 1px solid rgba(17, 17, 15, 0.08);
+  padding: 0 9px 0 14px;
 }
 
 .stepper-label {
-  padding-left: 12px;
+  padding-left: 30px;
 }
 
 .stepper-controls {
   display: grid;
-  grid-template-columns: 30px minmax(46px, 1fr) 30px;
+  grid-template-columns: 28px minmax(48px, 1fr) 28px;
   align-items: center;
-  min-height: 34px;
-  border-radius: 999px;
-  background: rgba(227, 223, 218, 0.58);
-  padding: 2px;
+  min-height: 32px;
 }
 
 .stepper button {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   background: transparent;
 }
 
@@ -212,8 +212,9 @@ button {
 .rail-actions {
   display: flex;
   flex: 0 0 auto;
-  gap: 4px;
-  padding-left: 2px;
+  gap: 2px;
+  border-left: 1px solid rgba(17, 17, 15, 0.08);
+  padding-left: 12px;
 }
 
 .icon-button {
@@ -241,11 +242,11 @@ button:focus-visible {
 
   .viewport {
     min-height: 100dvh;
-    padding: 84px 18px 300px;
+    padding: 84px 18px 286px;
   }
 
   .composition {
-    width: min(88vw, 58vh);
+    width: min(90vw, 60vh);
     min-width: 0;
   }
 
@@ -258,6 +259,8 @@ button:focus-visible {
     transform: none;
     flex-wrap: wrap;
     border-radius: 30px;
+    row-gap: 9px;
+    column-gap: 0;
     padding: 10px;
   }
 
@@ -269,6 +272,9 @@ button:focus-visible {
   .stepper {
     flex-basis: calc(33.333% - 7px);
     min-width: 0;
+    border-left: 0;
+    border-top: 1px solid rgba(17, 17, 15, 0.08);
+    padding: 8px 6px 0;
   }
 
   .stepper-controls {
@@ -276,13 +282,16 @@ button:focus-visible {
   }
 
   .stepper-label {
-    padding-left: 8px;
+    padding-left: 28px;
   }
 
   .rail-actions {
     width: 100%;
     justify-content: center;
+    border-left: 0;
+    border-top: 1px solid rgba(17, 17, 15, 0.08);
     padding-left: 0;
+    padding-top: 8px;
   }
 }
 
