@@ -1,6 +1,16 @@
 # geomac
 
-Geomac is a small monochrome vector machine for making geometric studies from repeated marks. It started from a radial Figma exploration and turns that vocabulary into a live, exportable design tool.
+Geomac is a small monochrome vector construction instrument. It creates repeatable geometric studies from one system, one primitive mark, and a few discrete constraints.
+
+The current model is system-first:
+
+- `System`: radial, rail, stack, or field
+- `Mark`: block, wedge, dot, or line
+- `Level`: structural complexity
+- `Phase`: rotation or offset
+- `Size`: export dimension
+
+The controls use Base UI's unstyled React primitives, with all visual styling owned by this project.
 
 ## Run
 

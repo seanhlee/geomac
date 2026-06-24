@@ -1,34 +1,54 @@
+import { NumberField } from "@base-ui/react/number-field";
+import { Toggle } from "@base-ui/react/toggle";
+import { ToggleGroup } from "@base-ui/react/toggle-group";
+import { Toolbar } from "@base-ui/react/toolbar";
 import {
+  AlignJustify,
   Circle,
   Clipboard,
   Download,
   FileDown,
+  Grid3X3,
+  Layers,
   Minus,
+  Orbit,
   Plus,
   Slash,
   Shuffle,
   Square,
   Triangle,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import {
-  BASE_PARAMS,
-  INK,
-  PAPER,
-  createMarks,
-  mulberry32,
-  pick,
-  round,
-} from "./geometry";
+import { BASE_PARAMS, INK, PAPER, createMarks, getApertureRadius, round } from "./geometry";
 import type { MarkInstance, MarkShape, Params, SystemMode } from "./geometry";
+
+type Option<T extends string> = {
+  icon: ReactNode;
+  label: string;
+  value: T;
+};
+
+const SYSTEM_OPTIONS: Option<SystemMode>[] = [
+  { value: "radial", label: "Radial", icon: <Orbit /> },
+  { value: "rail", label: "Rail", icon: <AlignJustify /> },
+  { value: "stack", label: "Stack", icon: <Layers /> },
+  { value: "field", label: "Field", icon: <Grid3X3 /> },
+];
+
+const MARK_OPTIONS: Option<MarkShape>[] = [
+  { value: "block", label: "Block", icon: <Square /> },
+  { value: "wedge", label: "Wedge", icon: <Triangle /> },
+  { value: "dot", label: "Dot", icon: <Circle /> },
+  { value: "line", label: "Line", icon: <Slash /> },
+];
 
 function App() {
   const [params, setParams] = useState<Params>(BASE_PARAMS);
   const [message, setMessage] = useState("ready");
   const svgRef = useRef<SVGSVGElement>(null);
   const marks = useMemo(() => createMarks(params), [params]);
-  const innerVoid = (params.void / 100) * (params.dimension / 2);
+  const apertureRadius = getApertureRadius(params);
 
   useEffect(() => {
     if (message === "ready") return;
@@ -40,36 +60,9 @@ function App() {
     setParams((current) => ({ ...current, [key]: value }));
   };
 
-  const stepParam = (key: "levels" | "rotation" | "dimension", delta: number, min: number, max: number) => {
-    setParams((current) => ({
-      ...current,
-      [key]: clamp(Number(current[key]) + delta, min, max),
-    }));
-  };
-
-  const randomize = () => {
-    const seed = nextSeed();
-    const random = mulberry32(seed);
-    const systems: SystemMode[] = ["glyph", "band", "field", "burst"];
-
-    setParams((current) => ({
-      ...current,
-      system: pick(systems, random),
-      count: Math.round(18 + random() * 58),
-      levels: Math.round(1 + random() * 6),
-      rotation: Math.round((-90 + random() * 180) / 15) * 15,
-      void: Math.round(14 + random() * 20),
-      spread: Math.round(58 + random() * 30),
-      length: Math.round(10 + random() * 20),
-      weight: Math.round(2 + random() * 5),
-      taper: Math.round(12 + random() * 82),
-      jitter: Math.round(random() * 8),
-      drift: Math.round((-54 + random() * 108) / 6) * 6,
-      smooth: Math.round(random() * 72),
-      compound: random() > 0.78,
-      seed,
-    }));
-    setMessage("new form");
+  const mutate = () => {
+    setParams((current) => ({ ...current, seed: nextSeed(current.seed) }));
+    setMessage("mutated");
   };
 
   const copySvg = async () => {
@@ -132,7 +125,9 @@ function App() {
       <header className="machine-top">
         <div className="identity">
           <span className="wordmark">geomac</span>
-          <span className="seed-label">#{params.seed}</span>
+          <span className="seed-label">
+            {params.system} / #{params.seed}
+          </span>
         </div>
         {message !== "ready" ? <span className="status-pill">{message}</span> : null}
       </header>
@@ -149,63 +144,64 @@ function App() {
         >
           <rect fill={PAPER} height={params.dimension} width={params.dimension} />
           <g fill={INK}>{marks.map((mark) => renderMark(mark, params.mark))}</g>
-          {params.system === "burst" && innerVoid > 0 ? (
-            <circle
-              cx={params.dimension / 2}
-              cy={params.dimension / 2}
-              fill={PAPER}
-              r={Math.max(0, innerVoid - params.dimension * 0.002)}
-            />
+          {apertureRadius > 0 ? (
+            <circle cx={params.dimension / 2} cy={params.dimension / 2} fill={PAPER} r={apertureRadius} />
           ) : null}
         </svg>
       </section>
 
-      <section className="control-rail" aria-label="Controls">
-        <IconSegmented
+      <Toolbar.Root aria-label="Geomac controls" className="control-rail">
+        <SegmentedControl
+          label="System"
+          onChange={(value) => updateParam("system", value)}
+          options={SYSTEM_OPTIONS}
+          value={params.system}
+        />
+
+        <SegmentedControl
           label="Mark"
           onChange={(value) => updateParam("mark", value)}
-          options={[
-            ["slab", "Slab"],
-            ["wedge", "Triangle"],
-            ["pill", "Pill"],
-            ["needle", "Needle"],
-          ]}
+          options={MARK_OPTIONS}
           value={params.mark}
         />
 
-        <Stepper
+        <NumberControl
           label="Level"
-          onDecrement={() => stepParam("levels", -1, 1, 7)}
-          onIncrement={() => stepParam("levels", 1, 1, 7)}
-          value={params.levels}
+          max={7}
+          min={1}
+          onChange={(value) => updateParam("level", value)}
+          step={1}
+          value={params.level}
         />
-        <Stepper
-          label="Turn"
-          onDecrement={() => stepParam("rotation", -15, -180, 180)}
-          onIncrement={() => stepParam("rotation", 15, -180, 180)}
-          suffix="deg"
-          value={params.rotation}
+        <NumberControl
+          label="Phase"
+          max={180}
+          min={-180}
+          onChange={(value) => updateParam("phase", value)}
+          step={15}
+          value={params.phase}
         />
-        <Stepper
+        <NumberControl
           label="Size"
-          onDecrement={() => stepParam("dimension", -128, 512, 1600)}
-          onIncrement={() => stepParam("dimension", 128, 512, 1600)}
-          suffix="px"
+          max={1600}
+          min={512}
+          onChange={(value) => updateParam("dimension", value)}
+          step={128}
           value={params.dimension}
         />
 
-        <div className="rail-actions" aria-label="Actions">
-          <IconButton icon={<Shuffle />} label="Randomize" onClick={randomize} />
-          <IconButton icon={<Clipboard />} label="Copy SVG" onClick={copySvg} />
-          <IconButton icon={<FileDown />} label="Download SVG" onClick={downloadSvg} />
-          <IconButton icon={<Download />} label="Download PNG" onClick={downloadPng} />
-        </div>
-      </section>
+        <Toolbar.Group aria-label="Actions" className="rail-actions">
+          <RailButton icon={<Shuffle />} label="Mutate" onClick={mutate} />
+          <RailButton icon={<Clipboard />} label="Copy SVG" onClick={copySvg} />
+          <RailButton icon={<FileDown />} label="Download SVG" onClick={downloadSvg} />
+          <RailButton icon={<Download />} label="Download PNG" onClick={downloadPng} />
+        </Toolbar.Group>
+      </Toolbar.Root>
     </main>
   );
 }
 
-function IconSegmented<T extends string>({
+function SegmentedControl<T extends string>({
   label,
   onChange,
   options,
@@ -213,82 +209,88 @@ function IconSegmented<T extends string>({
 }: {
   label: string;
   onChange: (value: T) => void;
-  options: [T, string][];
+  options: Option<T>[];
   value: T;
 }) {
   return (
-    <div className="shape-control">
-      <span className="sr-only">{label}</span>
-      <div className="icon-segmented">
-        {options.map(([optionValue, optionLabel]) => (
-          <button
-            aria-label={optionLabel}
-            data-active={optionValue === value}
-            key={optionValue}
-            onClick={() => onChange(optionValue)}
-            title={optionLabel}
-            type="button"
+    <Toolbar.Group className="rail-group" aria-label={label}>
+      <span className="rail-label">{label}</span>
+      <ToggleGroup
+        aria-label={label}
+        className="toggle-set"
+        onValueChange={(nextValue) => {
+          const selected = nextValue[0];
+          if (selected) onChange(selected as T);
+        }}
+        value={[value]}
+      >
+        {options.map((option) => (
+          <Toggle
+            aria-label={option.label}
+            className="rail-toggle"
+            key={option.value}
+            title={option.label}
+            value={option.value}
           >
-            {markIcon(optionValue)}
-          </button>
+            {option.icon}
+          </Toggle>
         ))}
-      </div>
-    </div>
+      </ToggleGroup>
+    </Toolbar.Group>
   );
 }
 
-function Stepper({
+function NumberControl({
   label,
-  onDecrement,
-  onIncrement,
-  suffix = "",
+  max,
+  min,
+  onChange,
+  step,
   value,
 }: {
   label: string;
-  onDecrement: () => void;
-  onIncrement: () => void;
-  suffix?: string;
+  max: number;
+  min: number;
+  onChange: (value: number) => void;
+  step: number;
   value: number;
 }) {
+  const id = useId();
+
   return (
-    <div className="stepper" aria-label={label}>
-      <span className="stepper-label">{label}</span>
-      <div className="stepper-controls">
-        <button aria-label={`Decrease ${label}`} onClick={onDecrement} title={`Decrease ${label}`} type="button">
+    <NumberField.Root
+      className="number-control"
+      max={max}
+      min={min}
+      onValueChange={(nextValue) => {
+        if (nextValue == null) return;
+        onChange(clampToStep(nextValue, min, max, step));
+      }}
+      snapOnStep
+      step={step}
+      value={value}
+    >
+      <label className="rail-label" htmlFor={id}>
+        {label}
+      </label>
+      <NumberField.Group className="number-field">
+        <NumberField.Decrement aria-label={`Decrease ${label}`} className="number-button" title={`Decrease ${label}`}>
           <Minus />
-        </button>
-        <output>
-          {value}
-          {suffix}
-        </output>
-        <button aria-label={`Increase ${label}`} onClick={onIncrement} title={`Increase ${label}`} type="button">
+        </NumberField.Decrement>
+        <NumberField.Input aria-label={label} className="number-input" id={id} />
+        <NumberField.Increment aria-label={`Increase ${label}`} className="number-button" title={`Increase ${label}`}>
           <Plus />
-        </button>
-      </div>
-    </div>
+        </NumberField.Increment>
+      </NumberField.Group>
+    </NumberField.Root>
   );
 }
 
-function markIcon(shape: string) {
-  if (shape === "slab") return <Square />;
-  if (shape === "wedge") return <Triangle />;
-  if (shape === "pill") return <Circle />;
-  return <Slash />;
-}
-
-function IconButton({
-  icon,
-  label,
-  onClick,
-}: {
-  icon: ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
+function RailButton({ icon, label, onClick }: { icon: ReactNode; label: string; onClick: () => void }) {
   return (
-    <button aria-label={label} className="icon-button" onClick={onClick} title={label} type="button">
+    <Toolbar.Button aria-label={label} className="icon-button" onClick={onClick} title={label} type="button">
       {icon}
-    </button>
+    </Toolbar.Button>
   );
 }
 
@@ -298,24 +300,29 @@ function renderMark(mark: MarkInstance, shape: MarkShape) {
   const width = Math.max(0.6, mark.width);
   const radius = (mark.smooth / 100) * (width / 2);
   const taper = mark.taper / 100;
-  const innerWidth = width * (0.08 + (1 - taper) * 0.74);
+  const innerWidth = width * (0.18 + (1 - taper) * 0.68);
 
-  if (shape === "pill") {
+  if (shape === "dot") {
+    const dotRadius = Math.max(width * 0.62, Math.min(length * 0.2, width * 1.08));
+    return <circle key={mark.id} opacity={mark.opacity} r={round(dotRadius)} transform={transform} />;
+  }
+
+  if (shape === "line") {
+    const lineWidth = Math.max(1, width * 0.28);
     return (
       <rect
-        height={round(width)}
+        height={round(lineWidth)}
         key={mark.id}
         opacity={mark.opacity}
-        rx={round(width / 2)}
         transform={transform}
         width={round(length)}
         x={round(-length / 2)}
-        y={round(-width / 2)}
+        y={round(-lineWidth / 2)}
       />
     );
   }
 
-  if (shape === "slab") {
+  if (shape === "block") {
     return (
       <rect
         height={round(width)}
@@ -330,39 +337,23 @@ function renderMark(mark: MarkInstance, shape: MarkShape) {
     );
   }
 
-  if (shape === "wedge") {
-    const nose = length / 2;
-    const tail = -length / 2;
-    const d = [
-      `M ${round(tail)} ${round(-innerWidth / 2)}`,
-      `L ${round(nose)} 0`,
-      `L ${round(tail)} ${round(innerWidth / 2)}`,
-      "Z",
-    ].join(" ");
-
-    return <path d={d} key={mark.id} opacity={mark.opacity} transform={transform} />;
-  }
-
   const nose = length / 2;
   const tail = -length / 2;
-  const d = [
-    `M ${round(tail)} ${round(-innerWidth / 2)}`,
-    `L ${round(nose)} ${round(-width / 2)}`,
-    `Q ${round(nose + radius)} 0 ${round(nose)} ${round(width / 2)}`,
-    `L ${round(tail)} ${round(innerWidth / 2)}`,
-    `Q ${round(tail - radius * 0.5)} 0 ${round(tail)} ${round(-innerWidth / 2)}`,
-    "Z",
-  ].join(" ");
+  const d = [`M ${round(tail)} ${round(-innerWidth / 2)}`, `L ${round(nose)} 0`, `L ${round(tail)} ${round(innerWidth / 2)}`, "Z"].join(
+    " ",
+  );
 
   return <path d={d} key={mark.id} opacity={mark.opacity} transform={transform} />;
 }
 
-function nextSeed() {
-  return Math.floor(1000 + Math.random() * 8999);
+function nextSeed(currentSeed: number) {
+  const next = Math.floor(1000 + Math.random() * 8999);
+  return next === currentSeed ? ((next + 1 - 1000) % 9000) + 1000 : next;
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
+function clampToStep(value: number, min: number, max: number, step: number) {
+  const stepped = Math.round(value / step) * step;
+  return Math.min(max, Math.max(min, stepped));
 }
 
 function getSvgText(svg: SVGSVGElement | null) {
