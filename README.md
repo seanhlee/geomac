@@ -5,8 +5,8 @@ Geomac is a small monochrome rock machine. It creates repeatable 2.5D vector roc
 The current model is material-first:
 
 - `Form`: monolith, shard, ridge, or quarry
-- `Fracture`: number and weight of surface cracks
-- `Strata`: horizontal sediment lines
+- `Fracture`: chipped silhouette and surface variation
+- `Strata`: sediment texture frequency
 - `Erode`: silhouette roughness
 - `Light`: tonal direction across facets
 - `Grain`: surface texture density
@@ -14,7 +14,7 @@ The current model is material-first:
 
 The controls use Base UI's unstyled React primitives, with all visual styling owned by this project. The output can be copied as SVG or exported as SVG/PNG.
 
-The renderer combines clipped facets, broken strata, chipped silhouettes, SVG turbulence, diffuse-lighting filters, and dedicated dark/light grain layers to keep the rocks monochrome while giving the surface more mineral depth.
+The renderer combines clipped facets, chipped silhouettes, SVG turbulence, diffuse-lighting filters, and dedicated dark/light grain layers to keep the rocks monochrome while giving the surface more mineral depth.
 
 ## Run
 

@@ -17,7 +17,7 @@ import {
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { BASE_PARAMS, INK, PAPER, createRock, round } from "./geometry";
-import type { GrainMark, Params, Point, RockFace, RockForm, RockPatch, RockStroke } from "./geometry";
+import type { Params, Point, RockFace, RockForm, RockPatch } from "./geometry";
 
 type Option<T extends string> = {
   icon: ReactNode;
@@ -48,6 +48,8 @@ function App() {
   const lightAzimuth = round(232 - params.light * 8);
   const darkGrainOpacity = params.grain === 0 ? 0 : round(0.035 + params.grain * 0.019);
   const lightGrainOpacity = params.grain === 0 ? 0 : round(0.018 + params.grain * 0.009);
+  const stoneFrequencyY = round(0.055 + params.strata * 0.018);
+  const reliefFrequencyY = round(0.11 + params.strata * 0.017);
 
   useEffect(() => {
     if (message === "ready") return;
@@ -166,7 +168,7 @@ function App() {
               y="0"
             >
               <feTurbulence
-                baseFrequency="0.018 0.12"
+                baseFrequency={`0.018 ${stoneFrequencyY}`}
                 numOctaves="5"
                 result="stoneNoise"
                 seed={params.seed}
@@ -232,7 +234,7 @@ function App() {
               y="0"
             >
               <feTurbulence
-                baseFrequency="0.03 0.16"
+                baseFrequency={`0.03 ${reliefFrequencyY}`}
                 numOctaves="4"
                 result="reliefHeight"
                 seed={params.seed + 139}
@@ -285,10 +287,6 @@ function App() {
               width={params.dimension}
             />
             <g style={{ mixBlendMode: "multiply" }}>{rock.surfacePatches.map(renderPatch)}</g>
-            <g>{rock.strataLines.map(renderStroke)}</g>
-            <g>{rock.edgeLines.map(renderStroke)}</g>
-            <g>{rock.cracks.map(renderStroke)}</g>
-            <g>{rock.grains.map(renderGrain)}</g>
             <path
               d={rock.silhouette}
               fill="none"
@@ -468,36 +466,6 @@ function renderFace(face: RockFace) {
 
 function renderPatch(patch: RockPatch) {
   return <polygon fill={patch.fill} key={patch.id} opacity={patch.opacity} points={pointList(patch.points)} />;
-}
-
-function renderStroke(stroke: RockStroke) {
-  return (
-    <path
-      d={stroke.d}
-      fill="none"
-      key={stroke.id}
-      opacity={stroke.opacity}
-      stroke={stroke.stroke}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={round(stroke.width)}
-    />
-  );
-}
-
-function renderGrain(grain: GrainMark) {
-  return (
-    <rect
-      fill={grain.fill}
-      height={round(grain.width)}
-      key={grain.id}
-      opacity={grain.opacity}
-      transform={`translate(${round(grain.x)} ${round(grain.y)}) rotate(${round(grain.angle)})`}
-      width={round(grain.length)}
-      x={round(-grain.length / 2)}
-      y={round(-grain.width / 2)}
-    />
-  );
 }
 
 function pointList(points: Point[]) {

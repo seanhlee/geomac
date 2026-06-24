@@ -22,25 +22,6 @@ export type RockFace = {
   fill: string;
 };
 
-export type RockStroke = {
-  id: string;
-  d: string;
-  stroke: string;
-  width: number;
-  opacity: number;
-};
-
-export type GrainMark = {
-  id: string;
-  fill: string;
-  x: number;
-  y: number;
-  angle: number;
-  length: number;
-  width: number;
-  opacity: number;
-};
-
 export type RockPatch = {
   id: string;
   fill: string;
@@ -54,10 +35,6 @@ export type RockScene = {
   baseFill: string;
   faces: RockFace[];
   surfacePatches: RockPatch[];
-  edgeLines: RockStroke[];
-  strataLines: RockStroke[];
-  cracks: RockStroke[];
-  grains: GrainMark[];
 };
 
 export const PAPER = "#ede9e2";
@@ -79,7 +56,7 @@ export const BASE_PARAMS: Params = {
 export function createRock(params: Params): RockScene {
   const random = mulberry32(params.seed);
   const dimension = params.dimension;
-  const outer = roughenPolygon(getOuterShape(params.form), params.erosion, random);
+  const outer = roughenPolygon(getOuterShape(params.form), params.erosion + params.fracture * 0.22, random);
   const silhouettePoints = outer.map((point) => scalePoint(point, dimension));
   const silhouette = pointsToPath(silhouettePoints);
   const shadow = createShadow(silhouettePoints, dimension);
@@ -91,10 +68,6 @@ export function createRock(params: Params): RockScene {
     baseFill: gray(0.48 + params.light * 0.025),
     faces,
     surfacePatches: createSurfacePatches(params, random),
-    edgeLines: createFaceEdges(params, faces),
-    strataLines: createStrata(params, random),
-    cracks: createCracks(params, random),
-    grains: createGrains(params, random),
   };
 }
 
@@ -392,166 +365,6 @@ function createSurfacePatches(params: Params, random: () => number): RockPatch[]
   return patches;
 }
 
-function createFaceEdges(params: Params, faces: RockFace[]): RockStroke[] {
-  const dimension = params.dimension;
-  const lightVector = getLightVector(params.light);
-  const center = { x: dimension * 0.5, y: dimension * 0.52 };
-  const edges: RockStroke[] = [];
-
-  faces.forEach((face, faceIndex) => {
-    face.points.forEach((start, edgeIndex) => {
-      const end = face.points[(edgeIndex + 1) % face.points.length];
-      const length = Math.hypot(end.x - start.x, end.y - start.y);
-      if (length < dimension * 0.045) return;
-
-      const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
-      const outward = normalizeVector({ x: midpoint.x - center.x, y: midpoint.y - center.y });
-      const exposure = dot(outward, lightVector);
-      const lowerOcclusion = midpoint.y > dimension * 0.66 ? 0.05 : 0;
-      const highlight = exposure > 0.3;
-      const shadowed = exposure < -0.08 || lowerOcclusion > 0;
-
-      if (!highlight && !shadowed && edgeIndex % 2 === 1) return;
-
-      edges.push({
-        id: `edge-${faceIndex}-${edgeIndex}`,
-        d: `M ${round(start.x)} ${round(start.y)} L ${round(end.x)} ${round(end.y)}`,
-        stroke: highlight ? gray(0.9) : INK,
-        width: dimension * (highlight ? 0.00135 : 0.0018),
-        opacity: highlight
-          ? Math.min(0.18, 0.06 + exposure * 0.12)
-          : Math.min(0.26, 0.07 + Math.max(0, -exposure) * 0.15 + lowerOcclusion),
-      });
-    });
-  });
-
-  return edges;
-}
-
-function createStrata(params: Params, random: () => number): RockStroke[] {
-  const dimension = params.dimension;
-  const lines: RockStroke[] = [];
-  const count = params.strata * 10;
-  const startY = dimension * 0.16;
-  const endY = dimension * 0.84;
-
-  for (let index = 0; index < count; index += 1) {
-    const t = count <= 1 ? 0.5 : index / (count - 1);
-    const y = startY + (endY - startY) * t + signed(random) * dimension * 0.014;
-    const segmentCount = 1 + Math.floor(random() * 3);
-
-    for (let segment = 0; segment < segmentCount; segment += 1) {
-      const length = dimension * (0.12 + random() * 0.34);
-      const range = dimension * 0.72;
-      const x = dimension * 0.14 + random() * Math.max(1, range - length);
-      const slope = signed(random) * dimension * 0.018;
-      const steps = 3 + Math.floor(random() * 4);
-      const points: Point[] = [];
-
-      for (let step = 0; step <= steps; step += 1) {
-        const p = step / steps;
-        const wave = Math.sin((p + t) * TAU * (1.1 + random() * 0.3) + params.seed * 0.01);
-        points.push({
-          x: x + length * p,
-          y:
-            y +
-            slope * (p - 0.5) +
-            wave * dimension * (0.0025 + params.erosion * 0.0011) +
-            signed(random) * dimension * 0.004,
-        });
-      }
-
-      const lightCatch = random() > 0.78;
-      lines.push({
-        id: `strata-${index}-${segment}`,
-        d: smoothPath(points),
-        stroke: lightCatch ? gray(0.88) : gray(0.14),
-        width: dimension * (0.0008 + random() * 0.0015),
-        opacity: lightCatch ? 0.12 + random() * 0.12 : 0.11 + random() * 0.18,
-      });
-    }
-  }
-
-  return lines;
-}
-
-function createCracks(params: Params, random: () => number): RockStroke[] {
-  const dimension = params.dimension;
-  const cracks: RockStroke[] = [];
-  const count = params.fracture * 5;
-
-  for (let index = 0; index < count; index += 1) {
-    const start = {
-      x: dimension * (0.18 + random() * 0.64),
-      y: dimension * (0.18 + random() * 0.64),
-    };
-    const angle = (params.light * -13 + signed(random) * 70 + (index % 4) * 28) * (Math.PI / 180);
-    const length = dimension * (0.04 + random() * 0.13);
-    const segments = 2 + Math.floor(random() * 3);
-    const points: Point[] = [start];
-
-    for (let segment = 1; segment <= segments; segment += 1) {
-      const progress = segment / segments;
-      points.push({
-        x: start.x + Math.cos(angle) * length * progress + signed(random) * dimension * 0.018,
-        y: start.y + Math.sin(angle) * length * progress + signed(random) * dimension * 0.018,
-      });
-    }
-
-    cracks.push({
-      id: `crack-${index}`,
-      d: polylinePath(points),
-      stroke: index % 5 === 0 ? gray(0.88) : INK,
-      width: dimension * (0.0009 + random() * 0.0022),
-      opacity: index % 5 === 0 ? 0.2 : 0.24 + random() * 0.12,
-    });
-
-    if (random() > 0.68) {
-      const branchStart = points[1 + Math.floor(random() * (points.length - 1))];
-      const branchLength = length * (0.26 + random() * 0.32);
-      const branchAngle = angle + signed(random) * 0.95;
-      const branchEnd = {
-        x: branchStart.x + Math.cos(branchAngle) * branchLength,
-        y: branchStart.y + Math.sin(branchAngle) * branchLength,
-      };
-
-      cracks.push({
-        id: `crack-${index}-branch`,
-        d: polylinePath([branchStart, branchEnd]),
-        stroke: INK,
-        width: dimension * (0.0008 + random() * 0.0014),
-        opacity: 0.16 + random() * 0.12,
-      });
-    }
-  }
-
-  return cracks;
-}
-
-function createGrains(params: Params, random: () => number): GrainMark[] {
-  const dimension = params.dimension;
-  const grains: GrainMark[] = [];
-  const count = params.grain * 68;
-
-  for (let index = 0; index < count; index += 1) {
-    const lightCatch = random() > 0.84;
-    const broadScratch = random() > 0.9;
-
-    grains.push({
-      id: `grain-${index}`,
-      fill: lightCatch ? gray(0.88) : broadScratch ? gray(0.36) : INK,
-      x: dimension * (0.13 + random() * 0.74),
-      y: dimension * (0.1 + random() * 0.82),
-      angle: signed(random) * (broadScratch ? 36 : 18) + params.light * -2.5,
-      length: dimension * (0.0015 + random() * (broadScratch ? 0.018 : 0.008)),
-      width: dimension * (0.00045 + random() * 0.001),
-      opacity: lightCatch ? 0.06 + random() * 0.1 : 0.035 + random() * 0.14,
-    });
-  }
-
-  return grains;
-}
-
 function createShadow(points: Point[], dimension: number) {
   const bottom = points.filter((point) => point.y > dimension * 0.68);
   if (bottom.length < 2) return "";
@@ -600,22 +413,6 @@ function jitterPoint(point: Point, amount: number, random: () => number): Point 
 
 function pointsToPath(points: Point[]) {
   return `${points.map((point, index) => `${index === 0 ? "M" : "L"} ${round(point.x)} ${round(point.y)}`).join(" ")} Z`;
-}
-
-function polylinePath(points: Point[]) {
-  return points.map((point, index) => `${index === 0 ? "M" : "L"} ${round(point.x)} ${round(point.y)}`).join(" ");
-}
-
-function smoothPath(points: Point[]) {
-  if (points.length < 2) return "";
-  return points
-    .map((point, index) => {
-      if (index === 0) return `M ${round(point.x)} ${round(point.y)}`;
-      const previous = points[index - 1];
-      const cx = (previous.x + point.x) / 2;
-      return `Q ${round(cx)} ${round(previous.y)} ${round(point.x)} ${round(point.y)}`;
-    })
-    .join(" ");
 }
 
 function gray(value: number) {
