@@ -40,11 +40,14 @@ function App() {
   const clipId = `rock-clip-${params.form}-${params.seed}`;
   const lightId = `${clipId}-light`;
   const stoneTextureId = `${clipId}-stone-texture`;
-  const dustTextureId = `${clipId}-dust-texture`;
+  const darkGrainId = `${clipId}-dark-grain`;
+  const lightGrainId = `${clipId}-light-grain`;
   const reliefTextureId = `${clipId}-relief-texture`;
   const lightStartX = round(params.dimension * (0.14 + params.light * 0.025));
   const lightEndX = round(params.dimension * (0.86 - params.light * 0.018));
   const lightAzimuth = round(232 - params.light * 8);
+  const darkGrainOpacity = params.grain === 0 ? 0 : round(0.035 + params.grain * 0.019);
+  const lightGrainOpacity = params.grain === 0 ? 0 : round(0.018 + params.grain * 0.009);
 
   useEffect(() => {
     if (message === "ready") return;
@@ -179,23 +182,45 @@ function App() {
             <filter
               colorInterpolationFilters="sRGB"
               height="100%"
-              id={dustTextureId}
+              id={darkGrainId}
               width="100%"
               x="0"
               y="0"
             >
               <feTurbulence
-                baseFrequency="0.095 0.42"
-                numOctaves="3"
-                result="dustNoise"
+                baseFrequency="0.72 0.86"
+                numOctaves="2"
+                result="darkGrainNoise"
                 seed={params.seed + 71}
                 type="fractalNoise"
               />
               <feColorMatrix
-                in="dustNoise"
-                result="dustAlpha"
+                in="darkGrainNoise"
+                result="darkGrainAlpha"
                 type="matrix"
-                values="0 0 0 0 0.88 0 0 0 0 0.88 0 0 0 0 0.86 0.55 0.55 0.55 0 -0.6"
+                values="0 0 0 0 0.06 0 0 0 0 0.06 0 0 0 0 0.055 1.4 1.4 1.4 0 -1.18"
+              />
+            </filter>
+            <filter
+              colorInterpolationFilters="sRGB"
+              height="100%"
+              id={lightGrainId}
+              width="100%"
+              x="0"
+              y="0"
+            >
+              <feTurbulence
+                baseFrequency="0.82 1.05"
+                numOctaves="2"
+                result="lightGrainNoise"
+                seed={params.seed + 173}
+                type="fractalNoise"
+              />
+              <feColorMatrix
+                in="lightGrainNoise"
+                result="lightGrainAlpha"
+                type="matrix"
+                values="0 0 0 0 0.94 0 0 0 0 0.93 0 0 0 0 0.9 1.35 1.35 1.35 0 -1.28"
               />
             </filter>
             <filter
@@ -246,9 +271,16 @@ function App() {
               width={params.dimension}
             />
             <rect
-              filter={`url(#${dustTextureId})`}
+              filter={`url(#${darkGrainId})`}
               height={params.dimension}
-              opacity="0.14"
+              opacity={darkGrainOpacity}
+              style={{ mixBlendMode: "multiply" }}
+              width={params.dimension}
+            />
+            <rect
+              filter={`url(#${lightGrainId})`}
+              height={params.dimension}
+              opacity={lightGrainOpacity}
               style={{ mixBlendMode: "screen" }}
               width={params.dimension}
             />

@@ -531,21 +531,21 @@ function createCracks(params: Params, random: () => number): RockStroke[] {
 function createGrains(params: Params, random: () => number): GrainMark[] {
   const dimension = params.dimension;
   const grains: GrainMark[] = [];
-  const count = params.grain * 150;
+  const count = params.grain * 68;
 
   for (let index = 0; index < count; index += 1) {
     const lightCatch = random() > 0.84;
-    const broadScratch = random() > 0.78;
+    const broadScratch = random() > 0.9;
 
     grains.push({
       id: `grain-${index}`,
       fill: lightCatch ? gray(0.88) : broadScratch ? gray(0.36) : INK,
       x: dimension * (0.13 + random() * 0.74),
       y: dimension * (0.1 + random() * 0.82),
-      angle: signed(random) * (broadScratch ? 44 : 15) + params.light * -2.5,
-      length: dimension * (0.002 + random() * (broadScratch ? 0.026 : 0.015)),
-      width: dimension * (0.00055 + random() * 0.0014),
-      opacity: lightCatch ? 0.08 + random() * 0.12 : 0.045 + random() * 0.18,
+      angle: signed(random) * (broadScratch ? 36 : 18) + params.light * -2.5,
+      length: dimension * (0.0015 + random() * (broadScratch ? 0.018 : 0.008)),
+      width: dimension * (0.00045 + random() * 0.001),
+      opacity: lightCatch ? 0.06 + random() * 0.1 : 0.035 + random() * 0.14,
     });
   }
 
